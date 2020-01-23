@@ -3,6 +3,8 @@ from scipy.interpolate import interp1d
 import scipy.optimize
 import math
 from scipy.ndimage.morphology import binary_closing
+import matplotlib.pyplot as plt
+import numpy as np 
 
 class single_diagram:
     def __init__(self,data,majorticks,unit,cycle,begin_datetime):
@@ -52,7 +54,7 @@ class single_diagram:
 
             def parabola(x, a, b, c):
                 return a*x**2 + b*x + c
-            fit_params, pcov = scipy.optimize.curve_fit(parabola, x, y)
+            fit_params, _ = scipy.optimize.curve_fit(parabola, x, y)
             x_fit = np.arange(math.ceil(min(x)),math.ceil(max(x))).astype(int)
             print(fit_params)
             y_fit = parabola(x_fit, *fit_params)
@@ -75,9 +77,9 @@ class single_diagram:
         f = interp1d(pts[:,1], self.majorticks, kind='cubic')
         self.yfunc = f
         # We calculate the dimension of pixel
-        if measurement_cycle == 'w':
+        if  self.cycle == 'w':
             self.pixelhour = 24.*7/self.data.shape[1]
-        if measurement_cycle == 'd':
+        if  self.cycle == 'd':
             self.pixelhour = 24./self.data.shape[1]
         self.correction = 'Performed'
     
@@ -139,7 +141,7 @@ class single_diagram:
         if interpolation:
             print("Interpolation")
             xn = np.arange(min(xr[~maskedval.mask]), max(xr[~maskedval.mask]))
-            f = interpolate.interp1d(xr[~maskedval.mask], self.detected_points_y[~maskedval.mask],kind='cubic')
+            f = interp1d(xr[~maskedval.mask], self.detected_points_y[~maskedval.mask],kind='cubic')
             f = f(xn)
         else:
             xn = xr[~maskedval.mask]

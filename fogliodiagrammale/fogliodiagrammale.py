@@ -1,5 +1,10 @@
 from singlediagram import single_diagram
 from datetime import datetime,timedelta 
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import json
+
 try:
     input = raw_input
 except NameError:
@@ -22,14 +27,14 @@ class fogliodiagrammale(object):
 
 
     def extract_plots(self):
-        titles = ['Relative Humidity plot','location','date','temperature plot','Close the plot']
+        titles = ['Relative Humidity plot','location','date','temperature plot',]
         c = [0]
         from matplotlib.widgets import RectangleSelector
         label = titles[0]
-        fig, current_ax = plt.subplots()
+        fig, current_ax = plt.subplots(figsize=(20,7))
         current_ax.imshow(self.sheet_image)
         current_ax.set_title("Drag a ROI over %s" %titles[c[0]])
-
+        
         def line_select_callback(eclick, erelease):
             
             'eclick and erelease are the press and release events'
@@ -44,7 +49,9 @@ class fogliodiagrammale(object):
                 self.ROI_date = self.sheet_image[y1:y2,x1:x2]
             if titles[c[0]] == 'temperature plot':
                 self.ROI_T = self.sheet_image[y1:y2,x1:x2]
-            
+                plt.close(fig)
+                return
+            c[0]+=1
             current_ax.set_title("Drag a ROI over %s" %titles[c[0]])  
             fig.canvas.draw()
             fig.canvas.flush_events()
@@ -65,23 +72,26 @@ class fogliodiagrammale(object):
 
             print("\n      click  -->  release")
 
-            # drawtype is 'box' or 'line' or 'none'
-            toggle_selector.RS = RectangleSelector(current_ax, line_select_callback,
-                                                drawtype='box', useblit=True,
-                                                # don't use middle button
-                                                button=[1, 3],
-                                                minspanx=5, minspany=5,
-                                                spancoords='pixels',)
-            plt.connect('key_press_event', toggle_selector)
+        # drawtype is 'box' or 'line' or 'none'
+        toggle_selector.RS = RectangleSelector(current_ax, line_select_callback,
+                                            drawtype='box', useblit=True,
+                                            # don't use middle button
+                                            button=[1, 3],
+                                            minspanx=5, minspany=5,
+                                            spancoords='pixels',)
+        plt.connect('key_press_event', toggle_selector)
 
-            plt.show()
+        plt.show()
     
     def wizard(self):
-        plt.imshow(np.rot90(self.ROI_location,1))
+        plt.ion()
+        plt.imshow(np.rot90(self.ROI_location,-1))
         plt.show()
-        location = input("Write location: ")
-        instrument_model = input("Write instrument model: ")
-        plt.imshow(np.rot90(self.ROI_date,1))
+        self.location = input("Write location: ")
+        self.instrument_model = self._dictchoice()
+        plt.close()
+        plt.ioff
+        plt.imshow(np.rot90(self.ROI_date,-1))
         plt.show()
         begin_date = input ("Write begin date using spaces e.g. 1988 12 31 15 30 :")
         begin_date = map(int,begin_date.split())
@@ -89,4 +99,38 @@ class fogliodiagrammale(object):
         end_date = input ("Write end date using spaces e.g. 1988 12 31 15 30 or press enter to continue:")
         if end_date != '':
             end_date = map(int,end_date.split())
-            end_datetime = datetime(*end_date)
+            self.end_datetime = datetime(*end_date)
+        while self.cycle_duration not in ['w','d']:
+            self.cycle_duration = input("Write cycle time weekly (w) or daily (d): ")
+        plt.ioff()
+        plt.close()
+        # Here we create the single diagram object
+        self.temperature_plot = single_diagram(data=self.ROI_T,
+                                majorticks=self.instrument_model["temperature ticks C"],
+                                unit=' % RH',
+                                cycle=self.cycle_duration,
+                                begin_datetime=self.begin_datetime,
+                                )
+        self.relativehumidity_plot = single_diagram(data=self.ROI_RH,
+                                majorticks=self.instrument_model["relative humidity ticks"],
+                                unit=' C',
+                                cycle=self.cycle_duration,
+                                begin_datetime=self.begin_datetime,
+                                )
+
+    def _dictchoice(self):
+        dirname = os.path.dirname(__file__)
+        filename = os.path.join(dirname, 'instruments_list.json')
+        with open(filename,'r') as f:
+            data = json.load(f)
+        dictdata = dict(zip(range(1,len(data.keys())+1),data.keys()))
+        for i in dictdata:
+            print("%s -> %s" %(i,dictdata[i]))
+        ans = input("Input id of the insturment or name:")
+        try:
+            ans = int(ans)
+            data = data[dictdata[ans]]
+        except ValueError:
+            data = ans
+        return data
+        
