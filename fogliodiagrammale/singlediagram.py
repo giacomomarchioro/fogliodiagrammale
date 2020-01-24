@@ -108,9 +108,12 @@ class single_diagram:
         while True:
             pts = np.asarray(plt.ginput(-1, timeout=-1))
             if plt.waitforbuttonpress():
+                plt.close()
                 break
-        # check if x values are sorted
+        # check if x values are sorted        
         if not all(pts[i,0] <= pts[i+1,0] for i in range(len(pts[:,0])-1)):
+            # we copy the original x positions
+            orgpts = np.ceil(pts[:,0]).astype(int)
             cyclelength = 0
             # in case we have multiple path we must add the previous elapsed time for each cycle
             for indx,val in enumerate(pts[1:,0]):
@@ -118,19 +121,19 @@ class single_diagram:
                 if val < (pts[indx,0] - cyclelength):
                     cyclelength += self.data.shape[1]
                 pts[indx+1,0]+= cyclelength
-        
+            print("Cycle correction performed")
+ 
         if interpolation:
             f = interp1d(pts[:,0],pts[:,1],kind='linear')
             # this correspond to the columns
             minx, maxx = math.ceil(min(pts[:,0])),math.ceil(max(pts[:,0]))
-            if maxx >= self.data.shape[1]:
-                maxx = self.data.shape[1]
             xran = np.arange(minx,maxx).astype(int)
             ynew = f(xran)
-                    
-            
+        
             y_detected = []
+            # we iterate on the original x positions and for each column we select the points
             for idx,column in enumerate(xran):
+                column = column%self.data.shape[1]
                 indexes_detected = np.argwhere(self.data[:,column,1] < blue_threshold)
                 # calculate the distances between the interpolated control point
                 distances = np.abs(indexes_detected - ynew[idx])
