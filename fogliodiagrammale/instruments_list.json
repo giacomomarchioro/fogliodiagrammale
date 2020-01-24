@@ -14,7 +14,7 @@
   "minimum temperature C":0,
   "maximum temperature C":100,
   "temperature ticks C": [-30, -20, -10, 0, 10, 20, 30, 40],
-  "rotation_duration":["weekly","dayly"]
+  "rotation_duration":[1,6]
 },
 
 "salmoiraghi1750a" : {
@@ -32,6 +32,6 @@
   "minimum temperature C":-35,
   "maximum temperature C":45,
   "temperature ticks C": [0, 5, 10, 15, 20, 25, 30, 35, 40],
-  "rotation_duration":["weekly","dayly"]
+  "rotation_duration_days":[1,6]
 }
 }

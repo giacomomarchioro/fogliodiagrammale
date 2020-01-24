@@ -79,10 +79,7 @@ class single_diagram:
         f = interp1d(pts[:,1], self.majorticks, kind='cubic')
         self.yfunc = f
         # We calculate the dimension of pixel
-        if  self.cycle == 'w':
-            self.pixelhour = 24.*7/self.data.shape[1]
-        if  self.cycle == 'd':
-            self.pixelhour = 24./self.data.shape[1]
+        self.pixelhour = 24.*self.cycle/self.data.shape[1]
         self.correction = 'Performed'
     
     def auto_detectpoints(self):
