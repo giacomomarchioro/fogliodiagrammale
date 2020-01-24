@@ -107,13 +107,13 @@ class fogliodiagrammale(object):
         # Here we create the single diagram object
         self.temperature_plot = single_diagram(data=self.ROI_T,
                                 majorticks=self.instrument_model["temperature ticks C"],
-                                unit=' % RH',
+                                unit=' C',
                                 cycle=self.cycle_duration,
                                 begin_datetime=self.begin_datetime,
                                 )
         self.relativehumidity_plot = single_diagram(data=self.ROI_RH,
                                 majorticks=self.instrument_model["relative humidity ticks"],
-                                unit=' C',
+                                unit=' % RH',
                                 cycle=self.cycle_duration,
                                 begin_datetime=self.begin_datetime,
                                 )
