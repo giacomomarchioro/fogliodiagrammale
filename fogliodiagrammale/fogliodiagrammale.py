@@ -18,6 +18,7 @@ class fogliodiagrammale(object):
         self.relativehumidity_plot = None
         self.cycle_duration = None 
         self.begin_datetime = None
+        self.time_offset = 0
         self.location = None
         self.station = None
         self.ROI_RH = None
@@ -30,10 +31,9 @@ class fogliodiagrammale(object):
         titles = ['Relative Humidity plot','location','date','temperature plot',]
         c = [0]
         from matplotlib.widgets import RectangleSelector
-        label = titles[0]
         fig, current_ax = plt.subplots(figsize=(20,7))
         current_ax.imshow(self.sheet_image)
-        current_ax.set_title("Drag a ROI over %s" %titles[c[0]])
+        current_ax.set_title("Drag a ROI over %s (r to restart)" %titles[c[0]])
         
         def line_select_callback(eclick, erelease):
             
@@ -69,6 +69,12 @@ class fogliodiagrammale(object):
             if event.key in ['A', 'a'] and not toggle_selector.RS.active:
                 print(' RectangleSelector activated.')
                 toggle_selector.RS.set_active(True)
+            if event.key in ['R', 'r'] and not toggle_selector.RS.active:
+                print(' RectangleSelector activated.')
+                c[0] = 0
+            if event.key in ['B', 'b'] and not toggle_selector.RS.active:
+                print(' RectangleSelector activated.')
+                c[0] -=1
 
             print("\n      click  -->  release")
 
@@ -83,25 +89,38 @@ class fogliodiagrammale(object):
 
         plt.show()
     
-    def wizard(self):
+    def wizard(self,cycle_duration=None,locationdict=None):
         plt.ion()
-        plt.imshow(np.rot90(self.ROI_location,-1))
+        fig = plt.figure(figsize=(12,8))
+        ax = fig.add_subplot(121)
+        ax.imshow(np.rot90(self.ROI_location,-1))
+        ax2 = fig.add_subplot(122)
+        ax2.imshow(np.rot90(self.ROI_date,-1))
         plt.show()
-        self.location = input("Write location: ")
-        self.instrument_model = self._dictchoice()
-        plt.close()
-        plt.ioff
-        plt.imshow(np.rot90(self.ROI_date,-1))
-        plt.show()
-        begin_date = input ("Write begin date using spaces e.g. 1988 12 31 15 30 :")
+        if locationdict != None:
+            text="Input the location number of the entry or a new location: "
+            self.location = self._dictchoice(locationdict,text=text)
+        else:
+            self.location = input("Write location: ")
+        self.instrument_model = self._select_instrument()
+        begin_date = input ("Write begin date using spaces e.g. 1988 12 31 15 30 : ")
         begin_date = map(int,begin_date.split())
         self.begin_datetime = datetime(*begin_date)
-        end_date = input ("Write end date using spaces e.g. 1988 12 31 15 30 or press enter to continue:")
+
+        # if hours are not provided the hourse are calculated from the position on the plot
+        if len(begin_date) < 4:
+            if self.cycle_duration > 1:         
+                 self.time_offset= self.instrument_model["first_complete_isoline_weekly_cycle"]
+            else:
+                 self.time_offset=self.instrument_model["first_complete_isoline_daily_cycle"]
+        end_date = input ("Write end date using spaces e.g. 1988 12 31 15 30 or press enter to continue: ")
         if end_date != '':
             end_date = map(int,end_date.split())
             self.end_datetime = datetime(*end_date)
-        while self.cycle_duration not in ['w','d']:
-            self.cycle_duration = input("Write cycle time weekly (w) or daily (d): ")
+        
+        self.cycle_duration = cycle_duration
+        if cycle_duration == None:
+            self.cycle_duration = int(input("Duration of a rotation of the cylinder in days: "))
         plt.ioff()
         plt.close()
         # Here we create the single diagram object
@@ -110,27 +129,53 @@ class fogliodiagrammale(object):
                                 unit=' C',
                                 cycle=self.cycle_duration,
                                 begin_datetime=self.begin_datetime,
+                                time_offset = self.time_offset
                                 )
         self.relativehumidity_plot = single_diagram(data=self.ROI_RH,
                                 majorticks=self.instrument_model["relative humidity ticks"],
                                 unit=' % RH',
                                 cycle=self.cycle_duration,
                                 begin_datetime=self.begin_datetime,
+                                time_offset = self.time_offset
                                 )
 
-    def _dictchoice(self):
+    def export_data(self,path=None,filename=None):
+        if filename == None:
+            filename = "chart_%s_%s.csv" %(self.begin_datetime,self.location)
+        if path == None:
+            path = os.getcwd()
+        filename = os.path.join(path,filename) 
+        with open(filename,'w') as f:
+            f.write("manufacturer : %s \n" %self.instrument_model["manufacturer"])
+            f.write("model : %s \n" %self.instrument_model["model"])
+            f.write("location : , %s\n" %self.location)
+            f.write("date, %s\n" %self.temperature_plot.unit)
+            for i in range(len(self.temperature_plot.measured_values)):
+                f.write("%s , %s \n" %(self.temperature_plot.time[i],
+                                    self.temperature_plot.measured_values[i]))
+            f.write("date, %s\n" %self.relativehumidity_plot.unit)
+            for i in range(len(self.relativehumidity_plot.measured_values)):
+                f.write("%s , %s \n" %(self.relativehumidity_plot.time[i],
+                                    self.relativehumidity_plot.measured_values[i]))
+
+    def _select_instrument(self):
         dirname = os.path.dirname(__file__)
         filename = os.path.join(dirname, 'instruments_list.json')
         with open(filename,'r') as f:
             data = json.load(f)
-        dictdata = dict(zip(range(1,len(data.keys())+1),data.keys()))
+        return self._dictchoice(data,"Input id of the insturment or name: ")
+    
+    def _dictchoice(self,dictionary,text="Input the number of the entry or a new entry: "):    
+        dictdata = dict(zip(range(1,len(dictionary.keys())+1),dictionary.keys()))
         for i in dictdata:
             print("%s -> %s" %(i,dictdata[i]))
-        ans = input("Input id of the insturment or name:")
+        ans = input(text)
         try:
             ans = int(ans)
-            data = data[dictdata[ans]]
+            data = dictionary[dictdata[ans]]
+            print("Using location in dict")
         except ValueError:
             data = ans
+            print('Creating new location')
         return data
         

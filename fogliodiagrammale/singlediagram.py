@@ -8,7 +8,7 @@ import numpy as np
 import os
 
 class single_diagram:
-    def __init__(self,data,majorticks,unit,cycle,begin_datetime):
+    def __init__(self,data,majorticks,unit,cycle,begin_datetime,time_offset):
         self.pixelhour = None
         self.time = None
         self.measured_values = None
@@ -21,12 +21,16 @@ class single_diagram:
         self.majorticks = majorticks
         self.cycle = cycle
         self.begin_datetime = begin_datetime
+        self.time_offset = time_offset
+        self.sampled_points = None
+        plt.rcParams["figure.figsize"] = (20,17)
     
     def find_referencesystem(self):
         """correct curvature and return function for finding x and y values"""
         if self.correction == 'Performed':
             print('Correction already performed')
             return
+        
         def tellme(s):
             print(s)
             plt.title(s, fontsize=16)
@@ -89,7 +93,28 @@ class single_diagram:
         self.detected_points_y = minarr
         self.detected_points_x =  xr
     
-    def manual_detectpoints(self,distance_treshold = 10,blue_threshold=60,interpolation=True):
+    def manual_sampling(self,plot=True):
+        """correct curvature and return function for finding x and y values"""
+        def tellme(s):
+            print(s)
+            plt.title(s, fontsize=16)
+            plt.draw()
+        plt.clf()
+        plt.imshow(self.data)
+        plt.setp(plt.gca(), autoscale_on=False)
+        
+        tellme('Use left button to add and right to remove last point, prese ENTER to finish')
+        plt.waitforbuttonpress()
+        
+        
+        while True:
+            pts = np.asarray(plt.ginput(-1, timeout=-1))
+            if plt.waitforbuttonpress():
+                plt.close()
+                break
+        self.sampled_points = pts
+
+    def manual_detectpoints(self,distance_treshold = 15,blue_threshold=50,interpolation=True,plot=True):
         """correct curvature and return function for finding x and y values"""
         def tellme(s):
             print(s)
@@ -109,8 +134,6 @@ class single_diagram:
                 break
         # check if x values are sorted        
         if not all(pts[i,0] <= pts[i+1,0] for i in range(len(pts[:,0])-1)):
-            # we copy the original x positions
-            orgpts = np.ceil(pts[:,0]).astype(int)
             cyclelength = 0
             # in case we have multiple path we must add the previous elapsed time for each cycle
             for indx,val in enumerate(pts[1:,0]):
@@ -131,7 +154,7 @@ class single_diagram:
             # we iterate on the original x positions and for each column we select the points
             for idx,column in enumerate(xran):
                 column = column%self.data.shape[1]
-                indexes_detected = np.argwhere(self.data[:,column,1] < blue_threshold)
+                indexes_detected = np.argwhere(self.data[:,column,0] < blue_threshold)
                 # calculate the distances between the interpolated control point
                 distances = np.abs(indexes_detected - ynew[idx])
                 indx_close = np.argwhere(distances < distance_treshold)
@@ -148,9 +171,11 @@ class single_diagram:
         else:          
             self.detected_points_y = pts[:,1]
             self.detected_points_x =  pts[:,0]
+        if plot:
+            self.plot_detected()
         
         
-    #from scipy.interpolate import UnivariateSpline
+    # from scipy.interpolate import UnivariateSpline
     def sigmafilter(self,interpolation=False,closing=True):
         xr = np.arange(len(self.detected_points_x))
         stdRH = np.std(self.detected_points_y)
@@ -184,22 +209,28 @@ class single_diagram:
     
     
     def calculate_values(self):
-        t = [self.begin_datetime + timedelta(hours=i*self.pixelhour) for i in self.detected_points_x]
+        t = [self.begin_datetime + timedelta(hours=i*self.pixelhour+self.time_offset) for i in self.detected_points_x]
         self.time = t
         self.measured_values = self.yfunc(self.detected_points_y)
 
-    def export_data(self,path=None,filename='RHplot'):
-        filename = os.path.join(path,filename,'.csv') 
+    def export_data(self,path=None,filename=None):
+        if filename == None:
+            filename = "%s_%s.csv" %(self.begin_datetime,self.unit)
+        if path == None:
+            path = os.getcwd()
+        filename = os.path.join(path,filename) 
         with open(filename,'w') as f:
             f.write(self.unit+'\n')
             for i in range(len(self.measured_values)):
-                f.write("%s , %s" %(self.time[i],
+                f.write("%s , %s \n" %(self.time[i],
                                     self.measured_values[i]))
             
     def plot_detected(self):
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(self.detected_points_x,self.detected_points_y)
+        orgpts = np.mod(self.detected_points_x,self.data.shape[1])
+        ax.scatter(orgpts,self.detected_points_y)
         ax.imshow(self.data)
         ax.set_ylabel(self.unit)
 
