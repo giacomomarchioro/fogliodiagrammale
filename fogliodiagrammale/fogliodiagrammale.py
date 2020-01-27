@@ -25,10 +25,17 @@ class fogliodiagrammale(object):
         self.ROI_T = None
         self.ROI_date = None
         self.ROI_location = None
+        self.ROI_header = None
+        self.coordsROI_RH = None
+        self.coordsROI_T = None
+        self.coordsROI_date = None
+        self.coordsROI_location = None
+        self.coordsROI_header = None
 
 
-    def extract_plots(self):
-        titles = ['Relative Humidity plot','location','date','temperature plot',]
+    def extract_plots(self,titles = None):
+        if titles is None:
+            titles = ['Relative Humidity plot','location','date','temperature plot',]
         c = [0]
         from matplotlib.widgets import RectangleSelector
         fig, current_ax = plt.subplots(figsize=(20,7))
@@ -43,12 +50,16 @@ class fogliodiagrammale(object):
             print("%s = img[%s:%s,%s:%s]"% (titles[c[0]], y1, y2, x1, x2))
             if titles[c[0]] == 'Relative Humidity plot':
                 self.ROI_RH = self.sheet_image[y1:y2,x1:x2]
+                self.coordsROI_RH = [y1,y2,x1,x2]
             if titles[c[0]] == 'location':
                 self.ROI_location = self.sheet_image[y1:y2,x1:x2]
+                self.coordsROI_location = [y1,y2,x1,x2]
             if titles[c[0]] == 'date':
                 self.ROI_date = self.sheet_image[y1:y2,x1:x2]
+                self.coordsROI_date = [y1,y2,x1,x2]
             if titles[c[0]] == 'temperature plot':
                 self.ROI_T = self.sheet_image[y1:y2,x1:x2]
+                self.coordsROI_T = [y1,y2,x1,x2]
                 plt.close(fig)
                 return
             c[0]+=1
@@ -56,10 +67,6 @@ class fogliodiagrammale(object):
             fig.canvas.draw()
             fig.canvas.flush_events()
             
-            
-            
-            
-
 
         def toggle_selector(event):
             print(' Key pressed.')
@@ -89,17 +96,60 @@ class fogliodiagrammale(object):
 
         plt.show()
     
-    def wizard(self,cycle_duration=None,locationdict=None):
+    def extract_singleplot(self,title):
+        from matplotlib.widgets import RectangleSelector
+        fig, current_ax = plt.subplots(figsize=(20,7))
+        current_ax.imshow(self.sheet_image)
+        current_ax.set_title("Drag a ROI over %s " %title)
+        
+        def line_select_callback(eclick, erelease):
+            
+            'eclick and erelease are the press and release events'
+            x1, y1 = int(eclick.xdata), int(eclick.ydata)
+            x2, y2 = int(erelease.xdata), int(erelease.ydata)  
+            plt.close(fig)
+            return self.sheet_image[y1:y2,x1:x2],(y1, y2, x1, x2)       
+            
+        def toggle_selector(event):
+            print(' Key pressed.')
+            if event.key in ['Q', 'q'] and toggle_selector.RS.active:
+                print(' RectangleSelector deactivated.')
+                toggle_selector.RS.set_active(False)
+            if event.key in ['A', 'a'] and not toggle_selector.RS.active:
+                print(' RectangleSelector activated.')
+                toggle_selector.RS.set_active(True)
+
+        # drawtype is 'box' or 'line' or 'none'
+        toggle_selector.RS = RectangleSelector(current_ax, line_select_callback,
+                                            drawtype='box', useblit=True,
+                                            # don't use middle button
+                                            button=[1, 3],
+                                            minspanx=5, minspany=5,
+                                            spancoords='pixels',)
+        plt.connect('key_press_event', toggle_selector)
+
+        plt.show()
+
+    def wizard(self,cycle_duration=None,locationdict=None, header_xcoords=None):
         plt.ion()
-        fig = plt.figure(figsize=(12,8))
-        ax = fig.add_subplot(121)
-        ax.imshow(np.rot90(self.ROI_location,-1))
-        ax2 = fig.add_subplot(122)
-        ax2.imshow(np.rot90(self.ROI_date,-1))
+        if header_xcoords is not None:
+            xi,xf = header_xcoords
+            self.ROI_header = self.sheet_image[:,xi:xf]
+            yf = self.sheet_image.shape[0]
+            self.coordsROI_header = [0,yf,xi,xf]
+            fig = plt.figure(figsize=(12,8))
+            ax = fig.add_subplot(111)
+            ax.imshow(np.rot90(self.ROI_header,-1))
+        else:
+            fig = plt.figure(figsize=(12,8))
+            ax = fig.add_subplot(121)
+            ax.imshow(np.rot90(self.ROI_location,-1))
+            ax2 = fig.add_subplot(122)
+            ax2.imshow(np.rot90(self.ROI_date,-1))
         plt.show()
         if locationdict != None:
             text="Input the location number of the entry or a new location: "
-            self.location = self._dictchoice(locationdict,text=text)
+            self.location = self._dictchoice(locationdict,text=text,retk=True)
         else:
             self.location = input("Write location: ")
         self.instrument_model = self._select_instrument()
@@ -126,19 +176,19 @@ class fogliodiagrammale(object):
         # Here we create the single diagram object
         self.temperature_plot = single_diagram(data=self.ROI_T,
                                 majorticks=self.instrument_model["temperature ticks C"],
-                                unit=' C',
+                                unit='degC',
                                 cycle=self.cycle_duration,
                                 begin_datetime=self.begin_datetime,
                                 time_offset = self.time_offset
                                 )
         self.relativehumidity_plot = single_diagram(data=self.ROI_RH,
                                 majorticks=self.instrument_model["relative humidity ticks"],
-                                unit=' % RH',
+                                unit='percentageRH',
                                 cycle=self.cycle_duration,
                                 begin_datetime=self.begin_datetime,
                                 time_offset = self.time_offset
                                 )
-
+    
     def export_data(self,path=None,filename=None):
         if filename == None:
             filename = "chart_%s_%s.csv" %(self.begin_datetime,self.location)
@@ -149,6 +199,12 @@ class fogliodiagrammale(object):
             f.write("manufacturer : %s \n" %self.instrument_model["manufacturer"])
             f.write("model : %s \n" %self.instrument_model["model"])
             f.write("location : , %s\n" %self.location)
+            f.write("coords RH plot:  %s\n" %self.coordsROI_RH)
+            f.write("coords T plot: %s\n" %self.coordsROI_T)
+            f.write("coords date: %s\n" %self.coordsROI_date)
+            f.write("coords location: %s\n" %self.coordsROI_location)
+            f.write("coords header: %s\n" %self.coordsROI_header)
+
             f.write("date, %s\n" %self.temperature_plot.unit)
             for i in range(len(self.temperature_plot.measured_values)):
                 f.write("%s , %s \n" %(self.temperature_plot.time[i],
@@ -165,7 +221,7 @@ class fogliodiagrammale(object):
             data = json.load(f)
         return self._dictchoice(data,"Input id of the insturment or name: ")
     
-    def _dictchoice(self,dictionary,text="Input the number of the entry or a new entry: "):    
+    def _dictchoice(self,dictionary,text="Input the number of the entry or a new entry: ",retk=False):    
         dictdata = dict(zip(range(1,len(dictionary.keys())+1),dictionary.keys()))
         for i in dictdata:
             print("%s -> %s" %(i,dictdata[i]))
@@ -173,6 +229,8 @@ class fogliodiagrammale(object):
         try:
             ans = int(ans)
             data = dictionary[dictdata[ans]]
+            if retk:
+                data = dictdata[ans]
             print("Using location in dict")
         except ValueError:
             data = ans

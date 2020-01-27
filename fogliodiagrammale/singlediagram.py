@@ -220,7 +220,7 @@ class single_diagram:
             path = os.getcwd()
         filename = os.path.join(path,filename) 
         with open(filename,'w') as f:
-            f.write(self.unit+'\n')
+            f.write("date, %s\n" %self.unit)
             for i in range(len(self.measured_values)):
                 f.write("%s , %s \n" %(self.time[i],
                                     self.measured_values[i]))
@@ -233,6 +233,7 @@ class single_diagram:
         ax.scatter(orgpts,self.detected_points_y)
         ax.imshow(self.data)
         ax.set_ylabel(self.unit)
+        plt.show()
 
     def plot_extracted(self):
         fig = plt.figure()
