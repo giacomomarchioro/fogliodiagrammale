@@ -1,9 +1,12 @@
+import matplotlib
+matplotlib.use('Qt4Agg')
 from singlediagram import single_diagram
 from datetime import datetime,timedelta 
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import json
+import time
 
 try:
     input = raw_input
@@ -31,6 +34,7 @@ class fogliodiagrammale(object):
         self.coordsROI_date = None
         self.coordsROI_location = None
         self.coordsROI_header = None
+        self.end_datetime = None
 
 
     def extract_plots(self,titles = None):
@@ -66,6 +70,8 @@ class fogliodiagrammale(object):
             current_ax.set_title("Drag a ROI over %s" %titles[c[0]])  
             fig.canvas.draw()
             fig.canvas.flush_events()
+            time.sleep(1)
+            print("c%s" %c[0])
             
 
         def toggle_selector(event):
@@ -76,12 +82,12 @@ class fogliodiagrammale(object):
             if event.key in ['A', 'a'] and not toggle_selector.RS.active:
                 print(' RectangleSelector activated.')
                 toggle_selector.RS.set_active(True)
-            if event.key in ['R', 'r'] and not toggle_selector.RS.active:
-                print(' RectangleSelector activated.')
-                c[0] = 0
-            if event.key in ['B', 'b'] and not toggle_selector.RS.active:
-                print(' RectangleSelector activated.')
-                c[0] -=1
+            # if event.key in ['R', 'r'] and not toggle_selector.RS.active:
+            #     print(' RectangleSelector activated.')
+            #     c[0] = 0
+            # if event.key in ['B', 'b'] and not toggle_selector.RS.active:
+            #     print(' RectangleSelector activated.')
+            #     c[0] -=1
 
             print("\n      click  -->  release")
 
@@ -101,14 +107,15 @@ class fogliodiagrammale(object):
         fig, current_ax = plt.subplots(figsize=(20,7))
         current_ax.imshow(self.sheet_image)
         current_ax.set_title("Drag a ROI over %s " %title)
-        
+        coords = []
         def line_select_callback(eclick, erelease):
             
             'eclick and erelease are the press and release events'
             x1, y1 = int(eclick.xdata), int(eclick.ydata)
             x2, y2 = int(erelease.xdata), int(erelease.ydata)  
             plt.close(fig)
-            return self.sheet_image[y1:y2,x1:x2],(y1, y2, x1, x2)       
+            ROI = self.sheet_image[y1:y2,x1:x2]
+            return ROI,(y1, y2, x1, x2)       
             
         def toggle_selector(event):
             print(' Key pressed.')
@@ -129,6 +136,16 @@ class fogliodiagrammale(object):
         plt.connect('key_press_event', toggle_selector)
 
         plt.show()
+
+    def extract_temperatureplot(self):
+        img, coords = self.extract_singleplot('temperature plot')
+        self.ROI_T = img
+        self.coordsROI_T = coords
+    
+    def extract_relativehumidityplot(self):
+        img, coords = self.extract_singleplot('relative humidity plot')
+        self.ROI_RH = img
+        self.coordsROI_RH = coords
 
     def wizard(self,cycle_duration=None,locationdict=None, header_xcoords=None):
         plt.ion()
@@ -153,24 +170,34 @@ class fogliodiagrammale(object):
         else:
             self.location = input("Write location: ")
         self.instrument_model = self._select_instrument()
-        begin_date = input ("Write begin date using spaces e.g. 1988 12 31 15 30 : ")
-        begin_date = map(int,begin_date.split())
+        bd = True
+        while bd:
+            try:
+                begin_date = input ("Write begin date using spaces e.g. 1988 12 31 15 30 : ")
+                begin_date = map(int,begin_date.split())
+                bd = False
+            except ValueError:
+                print('Date in wrong format!')
         self.begin_datetime = datetime(*begin_date)
-
-        # if hours are not provided the hourse are calculated from the position on the plot
-        if len(begin_date) < 4:
-            if self.cycle_duration > 1:         
-                 self.time_offset= self.instrument_model["first_complete_isoline_weekly_cycle"]
-            else:
-                 self.time_offset=self.instrument_model["first_complete_isoline_daily_cycle"]
         end_date = input ("Write end date using spaces e.g. 1988 12 31 15 30 or press enter to continue: ")
         if end_date != '':
             end_date = map(int,end_date.split())
             self.end_datetime = datetime(*end_date)
-        
         self.cycle_duration = cycle_duration
         if cycle_duration == None:
             self.cycle_duration = int(input("Duration of a rotation of the cylinder in days: "))
+        # if hours are not provided the hours are calculated from the position on the plot
+        if len(begin_date) < 4: # three etries means that only  years, months and day is provided
+            print("No hours found") # debug
+            if self.cycle_duration > 1: 
+                 print("Isoline for daily cycle used")   # debug     
+                 self.time_offset= self.instrument_model["first_complete_isoline_weekly_cycle"]
+            else:
+                 self.time_offset=self.instrument_model["first_complete_isoline_daily_cycle"]
+                 print("Isoline for weekly cycle used")   # debug
+       
+        
+        
         plt.ioff()
         plt.close()
         # Here we create the single diagram object
@@ -179,14 +206,16 @@ class fogliodiagrammale(object):
                                 unit='degC',
                                 cycle=self.cycle_duration,
                                 begin_datetime=self.begin_datetime,
-                                time_offset = self.time_offset
+                                time_offset = self.time_offset,
+                                reported_end_datetime = self.end_datetime
                                 )
         self.relativehumidity_plot = single_diagram(data=self.ROI_RH,
                                 majorticks=self.instrument_model["relative humidity ticks"],
                                 unit='percentageRH',
                                 cycle=self.cycle_duration,
                                 begin_datetime=self.begin_datetime,
-                                time_offset = self.time_offset
+                                time_offset = self.time_offset,
+                                reported_end_datetime = self.end_datetime
                                 )
     
     def export_data(self,path=None,filename=None):
@@ -225,7 +254,10 @@ class fogliodiagrammale(object):
         dictdata = dict(zip(range(1,len(dictionary.keys())+1),dictionary.keys()))
         for i in dictdata:
             print("%s -> %s" %(i,dictdata[i]))
-        ans = input(text)
+        isdate = True
+        while isdate:
+            ans = input(text)
+            isdate  = self._is_date(ans)
         try:
             ans = int(ans)
             data = dictionary[dictdata[ans]]
@@ -237,3 +269,11 @@ class fogliodiagrammale(object):
             print('Creating new location')
         return data
         
+    def _is_date(self,string):
+        try:
+            date = map(int,string.split())
+            datetime(*date)
+            print("This seems a date, instrument should have at least the manufacturer name!")
+            return True
+        except (ValueError,TypeError):
+            return False

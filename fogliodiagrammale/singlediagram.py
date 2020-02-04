@@ -8,7 +8,7 @@ import numpy as np
 import os
 
 class single_diagram:
-    def __init__(self,data,majorticks,unit,cycle,begin_datetime,time_offset):
+    def __init__(self,data,majorticks,unit,cycle,begin_datetime,time_offset,reported_end_datetime=None):
         self.pixelhour = None
         self.time = None
         self.measured_values = None
@@ -21,6 +21,7 @@ class single_diagram:
         self.majorticks = majorticks
         self.cycle = cycle
         self.begin_datetime = begin_datetime
+        self.reported_end_datetime = reported_end_datetime
         self.time_offset = time_offset
         self.sampled_points = None
         plt.rcParams["figure.figsize"] = (20,17)
@@ -166,6 +167,7 @@ class single_diagram:
                     # Otherwise we keep the closest point to the interpolated value
                     index_of_the_closest = np.argmin(distances)
                     y_detected.append(indexes_detected[index_of_the_closest][0])
+            minx 
             self.detected_points_y = np.array(y_detected)
             self.detected_points_x = xran
         else:          
@@ -208,8 +210,16 @@ class single_diagram:
         self.detected_points_x =  xn
     
     
-    def calculate_values(self):
-        t = [self.begin_datetime + timedelta(hours=i*self.pixelhour+self.time_offset) for i in self.detected_points_x]
+    def calculate_values(self,force_starting_date=True):
+       
+        # this check prevent error when user specify a starting day
+        # and then start the measurment from the center of the cylinder
+        # in this way we would have the starting day shifted by the days
+        dayoffset = int(-self.pixelhour*self.detected_points_x[0]/24)
+        if self.time_offset !=0:
+            t = [self.begin_datetime + timedelta(hours=i*self.pixelhour+self.time_offset,days=dayoffset) for i in self.detected_points_x]
+        else:
+            t = [self.begin_datetime + timedelta(hours=(i-self.detected_points_x[0])*self.pixelhour) for i in self.detected_points_x]
         self.time = t
         self.measured_values = self.yfunc(self.detected_points_y)
 
@@ -220,9 +230,9 @@ class single_diagram:
             path = os.getcwd()
         filename = os.path.join(path,filename) 
         with open(filename,'w') as f:
-            f.write("date, %s\n" %self.unit)
+            f.write("date,%s\n" %self.unit)
             for i in range(len(self.measured_values)):
-                f.write("%s , %s \n" %(self.time[i],
+                f.write("%s,%s \n" %(self.time[i],
                                     self.measured_values[i]))
             
     def plot_detected(self):
@@ -235,8 +245,40 @@ class single_diagram:
         ax.set_ylabel(self.unit)
         plt.show()
 
-    def plot_extracted(self):
+    def plot_extracted(self,showfig=True):
         fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.plot(self.time,self.measured_values)
+        if showfig:
+            ax = fig.add_subplot(211)
+            ax.plot(self.time,self.measured_values)
+            ax.vlines(self.begin_datetime,min(self.measured_values),max(self.measured_values))
+            if self.reported_end_datetime is not None:
+                ax.vlines(self.reported_end_datetime,min(self.measured_values),max(self.measured_values))
+            ax.set_ylabel(self.unit)
+            ax2 =fig.add_subplot(212)
+            ax2.imshow(self.data)
+        
+        else:
+            ax = fig.add_subplot(111)
+            ax.plot(self.time,self.measured_values)
+            ax.vlines(self.begin_datetime,min(self.measured_values),max(self.measured_values))
+            if self.reported_end_datetime is not None:
+                ax.vlines(self.reported_end_datetime,min(self.measured_values),max(self.measured_values))
+            ax.set_ylabel(self.unit)
+
+        plt.show()
+
+    def plot_results(self):
+        fig = plt.figure()
+        ax = fig.add_subplot(211)
+        ax.plot(self.time,self.measured_values,marker='x')
+        ax.vlines(self.begin_datetime,min(self.measured_values),max(self.measured_values))
+        if self.reported_end_datetime is not None:
+            ax.vlines(self.reported_end_datetime,min(self.measured_values),max(self.measured_values))
         ax.set_ylabel(self.unit)
+        ax2 =fig.add_subplot(212)
+        ax2.plot(self.detected_points_x,self.detected_points_y,marker='x')
+        orgpts = np.mod(self.detected_points_x,self.data.shape[1])
+        ax2.scatter(orgpts,self.detected_points_y,alpha=0.5)
+        ax2.imshow(self.data)
+        ax2.set_ylabel(self.unit)
+        plt.show()
