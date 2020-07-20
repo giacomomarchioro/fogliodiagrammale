@@ -133,3 +133,5 @@ fogliodiagrammale/\.vscode/
 doc01377820200113132615\.pdf
 
 *.csv
+
+\.DS_Store
